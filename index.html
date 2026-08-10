@@ -369,14 +369,16 @@ function authScreen(){
       <div class="logo-wrap"><div class="logo-glow"></div><img src="logo.png" alt="KohaLoop" style="width:96px;height:96px;position:relative;z-index:1;"></div>
       <div class="wordmark"><span class="koha">Koha</span> <span class="loopword">Loop</span></div>
       <p class="tag">Sell · Rent · Lend between neighbours</p>
+      <div id="authError" style="display:none;background:#fdecea;color:#c0392b;padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:8px;"></div>
+      <div id="authNotice" style="display:none;background:#eaf6f3;color:#0d6e62;padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:8px;"></div>
       <form id="authForm">
         ${!isLogin ? `<label>First name</label><input id="f-name" placeholder="Your first name" required/>` : ''}
         ${!isLogin ? `<label>Neighbourhood</label><input id="f-hood" placeholder="e.g. Queenstown CBD" required/>` : ''}
         <label>Email</label>
         <input id="f-email" type="email" placeholder="name@domain.com" required/>
         <label>Password</label>
-        <input id="f-pass" type="password" placeholder="••••••••" required/>
-        <button class="primary" type="submit">${isLogin ? 'Log in' : "Sign up"}</button>
+        <input id="f-pass" type="password" placeholder="•••••••• (min. 6 characters)" required minlength="6"/>
+        <button class="primary" type="submit" id="authSubmitBtn">${isLogin ? 'Log in' : "Sign up"}</button>
       </form>
       <div class="switch">
         ${isLogin ? `Don't have an account? <a onclick="switchAuth('signup')">Join</a>` : `Already a member? <a onclick="switchAuth('login')">Log in</a>`}
@@ -387,22 +389,55 @@ function authScreen(){
 }
 function switchAuth(mode){ state.screen = mode; render(); }
 function bindAuth(){
-  document.getElementById('authForm').addEventListener('submit', (e)=>{
+  document.getElementById('authForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const email = document.getElementById('f-email').value;
-    const name = state.screen==='signup' ? document.getElementById('f-name').value : email.split('@')[0];
-    const hood = state.screen==='signup' ? document.getElementById('f-hood').value : 'Queenstown';
-    state.user = { name, email, neighborhood: hood };
-    const target = state.pendingScreen || 'search';
-    state.pendingScreen = null;
-    if(target === 'chat' && state.currentItemId){
-      openChat(state.currentItemId);
+    const errBox = document.getElementById('authError');
+    const noticeBox = document.getElementById('authNotice');
+    const btn = document.getElementById('authSubmitBtn');
+    errBox.style.display = 'none';
+    noticeBox.style.display = 'none';
+    const email = document.getElementById('f-email').value.trim();
+    const password = document.getElementById('f-pass').value;
+    btn.disabled = true;
+    btn.textContent = 'Please wait...';
+
+    if(state.screen === 'signup'){
+      const name = document.getElementById('f-name').value.trim();
+      const hood = document.getElementById('f-hood').value.trim();
+      const { data, error } = await db.auth.signUp({
+        email, password,
+        options: { data: { name, neighborhood: hood } }
+      });
+      btn.disabled = false; btn.textContent = 'Sign up';
+      if(error){ errBox.textContent = error.message; errBox.style.display = 'block'; return; }
+      if(!data.session){
+        noticeBox.textContent = 'Check your email to confirm your account, then log in.';
+        noticeBox.style.display = 'block';
+        switchAuth('login');
+        return;
+      }
+      state.user = { name, email, neighborhood: hood };
+      afterAuthSuccess();
     } else {
-      state.screen = target;
-      render();
+      const { data, error } = await db.auth.signInWithPassword({ email, password });
+      btn.disabled = false; btn.textContent = 'Log in';
+      if(error){ errBox.textContent = error.message; errBox.style.display = 'block'; return; }
+      const meta = data.user.user_metadata || {};
+      state.user = { name: meta.name || email.split('@')[0], email, neighborhood: meta.neighborhood || 'Queenstown' };
+      afterAuthSuccess();
     }
-    loadFavorites().then(render);
   });
+}
+function afterAuthSuccess(){
+  const target = state.pendingScreen || 'search';
+  state.pendingScreen = null;
+  if(target === 'chat' && state.currentItemId){
+    openChat(state.currentItemId);
+  } else {
+    state.screen = target;
+    render();
+  }
+  loadFavorites().then(render);
 }
 
 function screenContent(){
@@ -694,7 +729,7 @@ function accountContent(){
     <button class="ghost" onclick="logout()">Log out</button>
   `;
 }
-function logout(){ state.user=null; state.favorites=[]; state.screen='search'; render(); }
+async function logout(){ await db.auth.signOut(); state.user=null; state.favorites=[]; state.screen='search'; render(); }
 
 function goto(screen){
   if(GATED_SCREENS.includes(screen) && !state.user){
@@ -791,8 +826,20 @@ function bindScreenEvents(){
   });
 }
 
+async function restoreSession(){
+  const { data } = await db.auth.getSession();
+  if(data.session){
+    const u = data.session.user;
+    const meta = u.user_metadata || {};
+    state.user = { name: meta.name || u.email.split('@')[0], email: u.email, neighborhood: meta.neighborhood || 'Queenstown' };
+    await loadFavorites();
+    render();
+  }
+}
+
 render();
 loadItems();
+restoreSession();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
