@@ -381,12 +381,29 @@ function authScreen(){
         <input id="f-pass" type="password" placeholder="•••••••• (min. 6 characters)" required minlength="6"/>
         <button class="primary" type="submit" id="authSubmitBtn">${isLogin ? 'Log in' : "Sign up"}</button>
       </form>
+      ${isLogin ? `<div class="switch"><a onclick="requestPasswordReset()">Forgot your password?</a></div>` : ''}
       <div class="switch">
         ${isLogin ? `Don't have an account? <a onclick="switchAuth('signup')">Join</a>` : `Already a member? <a onclick="switchAuth('login')">Log in</a>`}
       </div>
       <div class="switch"><a onclick="goto('search')">Continue without an account</a></div>
     </div>
   `;
+}
+async function requestPasswordReset(){
+  const email = document.getElementById('f-email').value.trim();
+  const errBox = document.getElementById('authError');
+  const noticeBox = document.getElementById('authNotice');
+  errBox.style.display = 'none'; noticeBox.style.display = 'none';
+  if(!email){
+    errBox.textContent = 'Type your email above first, then click "Forgot your password?" again.';
+    errBox.style.display = 'block';
+    return;
+  }
+  const siteUrl = window.location.origin + window.location.pathname;
+  const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: siteUrl });
+  if(error){ errBox.textContent = error.message; errBox.style.display = 'block'; return; }
+  noticeBox.textContent = 'Check your email for a link to reset your password.';
+  noticeBox.style.display = 'block';
 }
 function switchAuth(mode){ state.screen = mode; render(); }
 function bindAuth(){
@@ -935,6 +952,42 @@ async function restoreSession(){
     render();
   }
 }
+
+function resetPasswordScreen(){
+  return `
+    <div class="auth-screen" style="animation:popIn .35s ease both;">
+      <div class="logo-wrap"><div class="logo-glow"></div><img src="logo.png" alt="KohaLoop" style="width:96px;height:96px;position:relative;z-index:1;"></div>
+      <div class="wordmark"><span class="koha">Koha</span> <span class="loopword">Loop</span></div>
+      <p class="tag">Choose a new password</p>
+      <div id="authError" style="display:none;background:#fdecea;color:#c0392b;padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:8px;"></div>
+      <div id="authNotice" style="display:none;background:#eaf6f3;color:#0d6e62;padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:8px;"></div>
+      <form id="resetForm">
+        <label>New password</label>
+        <input id="new-pass" type="password" placeholder="•••••••• (min. 6 characters)" required minlength="6"/>
+        <button class="primary" type="submit">Set new password</button>
+      </form>
+    </div>
+  `;
+}
+
+db.auth.onAuthStateChange((event, session) => {
+  if(event === 'PASSWORD_RECOVERY'){
+    state.screen = 'reset';
+    const app = document.getElementById('app');
+    app.innerHTML = resetPasswordScreen();
+    document.getElementById('resetForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const errBox = document.getElementById('authError');
+      const noticeBox = document.getElementById('authNotice');
+      const newPass = document.getElementById('new-pass').value;
+      const { error } = await db.auth.updateUser({ password: newPass });
+      if(error){ errBox.textContent = error.message; errBox.style.display = 'block'; return; }
+      noticeBox.textContent = 'Password updated! Redirecting...';
+      noticeBox.style.display = 'block';
+      setTimeout(()=>{ window.history.replaceState({}, '', window.location.pathname); state.screen = 'search'; render(); }, 1200);
+    });
+  }
+});
 
 render();
 loadItems();
