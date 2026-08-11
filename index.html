@@ -630,8 +630,19 @@ function detailContent(){
       <button class="primary" onclick="goto('boost')">⭐ Boost this listing</button>
       <button class="ghost" onclick="openEdit('${item.id}')">Edit listing</button>
       <button class="ghost" onclick="deleteListing('${item.id}')" style="color:#c0392b;">Delete listing</button>
-    ` : `<button class="primary" onclick="openChat('${item.id}')">Contact</button>`}
+    ` : `
+      <button class="primary" onclick="openChat('${item.id}')">Contact</button>
+      <button class="ghost" onclick="reportListing('${item.id}')" style="color:#c0392b;">Report this listing</button>
+    `}
   `;
+}
+async function reportListing(itemId){
+  if(!state.user){ state.currentItemId = itemId; requireAuth('detail'); return; }
+  const reason = prompt('Why are you reporting this listing? (e.g. scam, inappropriate content, fake item)');
+  if(!reason || !reason.trim()) return;
+  const { error } = await db.from('reports').insert([{ item_id: itemId, reported_by: state.user.email, reason: reason.trim() }]);
+  if(error){ alert('Something went wrong sending your report. Please try again.'); return; }
+  alert('Thanks — this listing has been reported and will be reviewed.');
 }
 
 function editContent(){
