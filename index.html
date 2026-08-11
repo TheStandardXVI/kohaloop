@@ -181,6 +181,7 @@ let state = {
   searchQuery: '',
   currentItemId: null,
   loading: false,
+  favCounts: {},
 };
 
 const GATED_SCREENS = ['favorites','create','conversations','account','chat','edit','boost'];
@@ -237,7 +238,7 @@ function rowToItem(row){
     subcategory: row.subcategory, status: row.status, price: row.price, neighborhood: row.neighborhood,
     size: row.size, shoeSize: row.shoe_size, photo: row.photo,
     postedBy: row.posted_by, createdAt: row.created_at,
-    editCount: row.edit_count || 0, boostedUntil: row.boosted_until
+    editCount: row.edit_count || 0, boostedUntil: row.boosted_until, views: row.views || 0
   };
 }
 async function saveItem(item){
@@ -660,8 +661,32 @@ function editContent(){
   return createContent(item);
 }
 
+async function startCheckout(kind, itemId, days, price){
+  const siteUrl = window.location.origin + window.location.pathname;
+  try{
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY
+      },
+      body: JSON.stringify({ itemId, kind, days, price, siteUrl })
+    });
+    const data = await res.json();
+    if(data.url){
+      window.location.href = data.url;
+    } else {
+      alert('Could not start checkout: ' + (data.error || 'unknown error'));
+    }
+  }catch(e){
+    alert('Could not reach the payment service. Please try again.');
+    console.error(e);
+  }
+}
+
 function payToEdit(itemId){
-  alert('Payments are not connected yet in this test version — this button is a placeholder for the $2 NZD extra-edit fee. Once Stripe is set up, this would unlock editing again.');
+  startCheckout('edit', itemId, null, 2);
 }
 
 async function deleteListing(itemId){
@@ -684,18 +709,36 @@ function boostContent(){
           <h3>${o.label}</h3>
           <p>$${o.price} NZD</p>
         </div>
-        <button class="ghost" style="width:auto;margin-top:0;padding:10px 16px;" onclick="confirmBoost('${item.id}', ${o.days}, ${o.price})">Choose</button>
+        <button class="ghost" style="width:auto;margin-top:0;padding:10px 16px;" onclick="startCheckout('boost', '${item.id}', ${o.days}, ${o.price})">Choose</button>
       </div>
     `).join('')}
-    <p style="font-size:12px;color:var(--muted);margin-top:10px;">Payments aren't connected yet in this test version — choosing an option here simulates the boost without charging you.</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;">You'll be redirected to Stripe's secure checkout to complete payment.</p>
   `;
 }
-async function confirmBoost(itemId, days, price){
-  const boostedUntil = Date.now() + days*24*60*60*1000;
-  await db.from('items').update({ boosted_until: boostedUntil }).eq('id', itemId);
-  alert(`Demo mode: "${price} NZD" boost applied for ${days} day(s). No real payment was taken.`);
-  await loadItems();
-  openDetail(itemId);
+async function handleCheckoutReturn(){
+  const params = new URLSearchParams(window.location.search);
+  const boostItem = params.get('boost_success');
+  const editItem = params.get('edit_success');
+  const cancelled = params.get('payment_cancelled');
+  if(boostItem){
+    const days = parseInt(params.get('days'), 10) || 1;
+    const boostedUntil = Date.now() + days*24*60*60*1000;
+    await db.from('items').update({ boosted_until: boostedUntil }).eq('id', boostItem);
+    window.history.replaceState({}, '', window.location.pathname);
+    await loadItems();
+    state.currentItemId = boostItem;
+    state.screen = 'detail';
+    render();
+    alert('Payment successful — your listing is now boosted!');
+  } else if(editItem){
+    await db.from('items').update({ edit_count: 0 }).eq('id', editItem);
+    window.history.replaceState({}, '', window.location.pathname);
+    await loadItems();
+    openEdit(editItem);
+    alert('Payment successful — you can now edit your listing again.');
+  } else if(cancelled){
+    window.history.replaceState({}, '', window.location.pathname);
+  }
 }
 
 function chatContent(){
@@ -729,6 +772,7 @@ function conversationsContent(){
 
 function accountContent(){
   const myItems = state.items.filter(i => i.postedBy === state.user.name);
+  const now = Date.now();
   return `
     <div class="account-header">
       <div class="account-avatar">${(state.user.name||'?').charAt(0).toUpperCase()}</div>
@@ -736,9 +780,43 @@ function accountContent(){
     </div>
     <div class="account-row"><span class="lbl">Email</span><span>${state.user.email}</span></div>
     <div class="account-row"><span class="lbl">Items posted</span><span>${myItems.length}</span></div>
-    <div class="account-row"><span class="lbl">Favorites</span><span>${state.favorites.length}</span></div>
+    <div class="account-row"><span class="lbl">Favorites saved by you</span><span>${state.favorites.length}</span></div>
+
+    <div class="section-title">My listings</div>
+    ${myItems.length ? myItems.map(i => {
+      const isBoosted = i.boostedUntil && i.boostedUntil > now;
+      const likeCount = (state.favCounts && state.favCounts[i.id]) || 0;
+      return `
+      <div class="item-card" style="cursor:default;" onclick="event.stopPropagation()">
+        <div class="item-thumb" ${i.photo ? `style="background-image:url('${i.photo}');background-size:cover;background-position:center;"` : ''}>${i.photo ? '' : '<img src="logo.png" alt="">'}</div>
+        <div class="item-info">
+          <span class="pill ${statusInfo(i.status).cls}">${statusInfo(i.status).label}</span>
+          ${isBoosted ? '<span class="pill boosted">⭐ Boosted</span>' : ''}
+          <h3 onclick="event.stopPropagation();openDetail('${i.id}')" style="cursor:pointer;">${i.title}</h3>
+          <p>👁 ${i.views||0} views &nbsp;·&nbsp; 🍀 ${likeCount} favorited</p>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <button class="ghost" style="width:auto;margin-top:0;padding:8px 12px;font-size:13px;" onclick="event.stopPropagation();openEdit('${i.id}')">Edit</button>
+            <button class="ghost" style="width:auto;margin-top:0;padding:8px 12px;font-size:13px;" onclick="event.stopPropagation();state.currentItemId='${i.id}';goto('boost')">${isBoosted ? 'Extend boost' : 'Boost'}</button>
+          </div>
+        </div>
+      </div>
+    `;}).join('') : emptyState('No listings yet', "Items you post will show up here with views and favorites stats.")}
+
     <button class="ghost" onclick="logout()">Log out</button>
   `;
+}
+async function loadAccountStats(){
+  const myItems = state.items.filter(i => i.postedBy === state.user.name);
+  const ids = myItems.map(i => i.id);
+  if(!ids.length){ state.favCounts = {}; render(); return; }
+  try{
+    const { data, error } = await db.from('favorites').select('item_id').in('item_id', ids);
+    if(error) throw error;
+    const counts = {};
+    (data||[]).forEach(r => counts[r.item_id] = (counts[r.item_id]||0)+1);
+    state.favCounts = counts;
+  }catch(e){ state.favCounts = {}; console.error('loadAccountStats', e); }
+  render();
 }
 async function logout(){ await db.auth.signOut(); state.user=null; state.favorites=[]; state.screen='search'; render(); }
 
@@ -749,13 +827,23 @@ function goto(screen){
   }
   state.screen = screen;
   render();
+  if(screen === 'account') loadAccountStats();
 }
 function requireAuth(targetScreen){
   state.pendingScreen = targetScreen;
   state.screen = 'login';
   render();
 }
-function openDetail(id){ state.currentItemId = id; state.screen = 'detail'; render(); }
+function openDetail(id){
+  state.currentItemId = id;
+  state.screen = 'detail';
+  render();
+  const item = state.items.find(i=>i.id===id);
+  if(item){
+    item.views = (item.views||0) + 1;
+    db.from('items').update({ views: item.views }).eq('id', id).then(()=>{});
+  }
+}
 function openEdit(id){ state.currentItemId = id; goto('edit'); }
 async function openChat(id){
   if(!state.user){ state.currentItemId = id; requireAuth('chat'); return; }
@@ -851,6 +939,7 @@ async function restoreSession(){
 render();
 loadItems();
 restoreSession();
+handleCheckoutReturn();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
 }
