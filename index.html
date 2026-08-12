@@ -681,15 +681,9 @@ function editContent(){
 async function startCheckout(kind, itemId, days, price){
   const siteUrl = window.location.origin + window.location.pathname;
   try{
-    const { data: sessionData } = await db.auth.getSession();
-    const token = sessionData?.session?.access_token || SUPABASE_KEY;
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
+    const res = await fetch('/create-checkout', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': 'Bearer ' + token
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ itemId, kind, days, price, siteUrl })
     });
     if(!res.ok){
@@ -709,7 +703,6 @@ async function startCheckout(kind, itemId, days, price){
     console.error(e);
   }
 }
-
 function payToEdit(itemId){
   startCheckout('edit', itemId, null, 2);
 }
