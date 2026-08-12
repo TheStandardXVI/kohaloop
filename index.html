@@ -681,15 +681,23 @@ function editContent(){
 async function startCheckout(kind, itemId, days, price){
   const siteUrl = window.location.origin + window.location.pathname;
   try{
+    const { data: sessionData } = await db.auth.getSession();
+    const token = sessionData?.session?.access_token || SUPABASE_KEY;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'apikey': SUPABASE_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_KEY
+        'Authorization': 'Bearer ' + token
       },
       body: JSON.stringify({ itemId, kind, days, price, siteUrl })
     });
+    if(!res.ok){
+      const text = await res.text();
+      alert('Payment service error (' + res.status + '): ' + text.slice(0,200));
+      console.error('checkout error', res.status, text);
+      return;
+    }
     const data = await res.json();
     if(data.url){
       window.location.href = data.url;
