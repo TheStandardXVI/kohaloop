@@ -662,7 +662,7 @@ function onCategoryChange(val){
 }
 
 // Resizes and compresses an image before storage (avoids overly heavy files)
-function resizeImage(file, maxWidth){
+function processAndUploadPhoto(file, maxWidth){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -674,7 +674,16 @@ function resizeImage(file, maxWidth){
         canvas.height = img.height * scale;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
+        const previewDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+        canvas.toBlob(async (blob) => {
+          try{
+            const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+            const { error: upErr } = await db.storage.from('listing-photos').upload(filename, blob, { contentType: 'image/jpeg', upsert: true });
+            if(upErr) throw upErr;
+            const { data } = db.storage.from('listing-photos').getPublicUrl(filename);
+            resolve({ previewDataUrl, url: data.publicUrl });
+          }catch(err){ reject(err); }
+        }, 'image/jpeg', 0.72);
       };
       img.onerror = reject;
       img.src = e.target.result;
@@ -1082,9 +1091,15 @@ function bindScreenEvents(){
       photoInput.addEventListener('change', async (e)=>{
         const file = e.target.files[0];
         if(!file) return;
-        const dataUrl = await resizeImage(file, 900);
-        pendingPhoto = dataUrl;
-        document.getElementById('photoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:12px;object-fit:cover;">`;
+        document.getElementById('photoPreview').innerHTML = `<p style="color:var(--muted);font-size:13px;">Uploading photo...</p>`;
+        try{
+          const { previewDataUrl, url } = await processAndUploadPhoto(file, 900);
+          pendingPhoto = url;
+          document.getElementById('photoPreview').innerHTML = `<img src="${previewDataUrl}" style="max-width:100%;max-height:160px;border-radius:12px;object-fit:cover;">`;
+        }catch(err){
+          document.getElementById('photoPreview').innerHTML = `<p style="color:#c0392b;font-size:13px;">Upload failed — please try again.</p>`;
+          console.error('photo upload failed', err);
+        }
       });
     }
     window.captureLocation = function(){
