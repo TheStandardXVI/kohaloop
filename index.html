@@ -238,6 +238,18 @@ const BOOST_OPTIONS = [
   {days:30, label:'1 month', price:20}
 ];
 
+// Lightweight scam/spam keyword filter — blocks obvious red flags before publishing or messaging.
+// Not a substitute for the Report button, just a first line of defence.
+const BLOCKED_KEYWORDS = [
+  'wire transfer','western union','moneygram','bitcoin only','crypto payment only',
+  'gift card','send gift cards','whatsapp me at','telegram me at','click this link',
+  'verify your account','urgent payment required','prepay before pickup'
+];
+function containsBlockedContent(text){
+  const lower = (text||'').toLowerCase();
+  return BLOCKED_KEYWORDS.some(k => lower.includes(k));
+}
+
 async function loadItems(){
   state.loading = true;
   try{
@@ -714,6 +726,7 @@ function detailContent(){
     <div class="detail-meta">${item.neighborhood} &nbsp;·&nbsp; ${item.category}${item.subcategory ? ' &nbsp;·&nbsp; '+item.subcategory : ''}${item.size ? ' &nbsp;·&nbsp; Size '+item.size : ''}${item.shoeSize ? ' &nbsp;·&nbsp; Shoe size '+item.shoeSize : ''}${item.price ? ' &nbsp;·&nbsp; $'+item.price+' NZD' : ''}</div>
     <p style="font-size:15px;line-height:1.55;color:var(--text);margin-top:12px;">${item.description || 'No description provided.'}</p>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;">Posted by ${item.postedBy}</p>
+    <button class="ghost" onclick="shareListing('${item.id}')">📣 Share this listing</button>
     ${item.lat && item.lng ? `<div id="itemMiniMap"></div>` : ''}
     ${item.status === 'louer' ? `
       <div class="section-title">Booked dates</div>
@@ -735,6 +748,26 @@ function detailContent(){
       <button class="ghost" onclick="reportListing('${item.id}')" style="color:#c0392b;">Report this listing</button>
     `}
   `;
+}
+async function shareListing(itemId){
+  const item = state.items.find(i=>i.id===itemId);
+  if(!item) return;
+  const url = window.location.origin + window.location.pathname + '?item=' + itemId;
+  const shareData = {
+    title: item.title,
+    text: `Check out "${item.title}" on KohaLoop — ${item.neighborhood}`,
+    url
+  };
+  if(navigator.share){
+    try{ await navigator.share(shareData); }catch(e){ /* user cancelled, do nothing */ }
+  } else {
+    try{
+      await navigator.clipboard.writeText(url);
+      alert('Link copied! Paste it anywhere to share this listing.');
+    }catch(e){
+      prompt('Copy this link to share:', url);
+    }
+  }
 }
 function renderItemMiniMap(){
   const el = document.getElementById('itemMiniMap');
@@ -1037,6 +1070,10 @@ async function submitMessage(itemId){
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
   if(!text) return;
+  if(containsBlockedContent(text)){
+    alert("This message contains wording that's commonly used in scams (e.g. wire transfer, gift cards). Please rewrite it. If this is a mistake, contact us.");
+    return;
+  }
   await sendMessage(itemId, state.user.name, text);
   input.value = '';
   openChat(itemId);
@@ -1134,6 +1171,10 @@ function bindScreenEvents(){
         photo: pendingPhoto,
         lat: pendingLat, lng: pendingLng,
       };
+      if(containsBlockedContent(fields.title) || containsBlockedContent(fields.description)){
+        alert("This listing contains wording that's commonly used in scams (e.g. wire transfer, gift cards). Please rewrite it without that wording. If this is a mistake, contact us.");
+        return;
+      }
       if(existingItem){
         await updateItem(existingItem.id, fields, (existingItem.editCount||0)+1);
         await loadItems();
@@ -1214,7 +1255,14 @@ db.auth.onAuthStateChange((event, session) => {
 });
 
 render();
-loadItems();
+loadItems().then(()=>{
+  const params = new URLSearchParams(window.location.search);
+  const sharedItemId = params.get('item');
+  if(sharedItemId){
+    window.history.replaceState({}, '', window.location.pathname);
+    openDetail(sharedItemId);
+  }
+});
 restoreSession();
 handleCheckoutReturn();
 if ('serviceWorker' in navigator) {
