@@ -196,6 +196,13 @@ let state = {
 
 const GATED_SCREENS = ['favorites','create','conversations','account','chat','edit','boost'];
 
+const NEIGHBOURHOODS = [
+  'Queenstown CBD','Fernhill','Sunshine Bay','Kelvin Heights','Frankton','Arthurs Point',
+  'Arrowtown','Lake Hayes','Shotover Country','Jacks Point','Queenstown Hill',
+  'Wanaka','Albert Town','Hawea','Cardrona',
+  'Glenorchy','Kingston','Cromwell','Alexandra',
+  'Christchurch','Dunedin','Other South Island town'
+];
 const CATEGORIES = [
   'Sport & Outdoor',
   'DIY & Tools',
@@ -397,7 +404,7 @@ function authScreen(){
       <div id="authNotice" style="display:none;background:#eaf6f3;color:#0d6e62;padding:12px 14px;border-radius:12px;font-size:13px;margin-bottom:8px;"></div>
       <form id="authForm">
         ${!isLogin ? `<label>First name</label><input id="f-name" placeholder="Your first name" required/>` : ''}
-        ${!isLogin ? `<label>Neighbourhood</label><input id="f-hood" placeholder="e.g. Queenstown CBD" required/>` : ''}
+        ${!isLogin ? `<label>Neighbourhood</label><select id="f-hood" required><option value="">Select a neighbourhood...</option>${NEIGHBOURHOODS.map(n=>`<option value="${n}">${n}</option>`).join('')}</select>` : ''}
         <label>Email</label>
         <input id="f-email" type="email" placeholder="name@domain.com" required/>
         <label>Password</label>
@@ -632,7 +639,10 @@ function createContent(editItem){
       <label>Price (NZD, optional if lending)</label>
       <input id="c-price" type="number" placeholder="0" value="${it.price||''}"/>
       <label>Neighbourhood</label>
-      <input id="c-hood" value="${it.neighborhood || state.user?.neighborhood || ''}" required/>
+      <select id="c-hood" required>
+        <option value="">Select a neighbourhood...</option>
+        ${NEIGHBOURHOODS.map(n=>`<option value="${n}" ${(it.neighborhood||state.user?.neighborhood)===n?'selected':''}>${n}</option>`).join('')}
+      </select>
       <button type="button" class="locate-btn" id="locateBtn" onclick="captureLocation()">📍 ${it.lat ? 'Location saved — tap to update' : 'Use my current location'}</button>
       <p id="locateStatus" style="font-size:12px;color:var(--muted);margin-top:4px;"></p>
       <button class="primary" type="submit">${isEdit ? 'Save changes' : 'Post my item'}</button>
@@ -1083,9 +1093,11 @@ function bindScreenEvents(){
       statusEl.textContent = 'Getting your location...';
       navigator.geolocation.getCurrentPosition(
         (pos)=>{
-          pendingLat = pos.coords.latitude;
-          pendingLng = pos.coords.longitude;
-          statusEl.textContent = '✓ Location saved.';
+          // Fuzz the coordinates by ~300-500m so the exact address is never revealed publicly
+          const jitter = () => (Math.random() - 0.5) * 0.008;
+          pendingLat = pos.coords.latitude + jitter();
+          pendingLng = pos.coords.longitude + jitter();
+          statusEl.textContent = '✓ Approximate location saved (exact address not shown, for your privacy).';
           document.getElementById('locateBtn').textContent = '📍 Location saved — tap to update';
         },
         (err)=>{ statusEl.textContent = 'Could not get your location — you can still publish without it.'; },
