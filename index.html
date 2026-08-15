@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -182,6 +182,7 @@ let state = {
   currentItemId: null,
   loading: false,
   favCounts: {},
+  blockedUsers: [],
 };
 
 const GATED_SCREENS = ['favorites','create','conversations','account','chat','edit','boost'];
@@ -230,6 +231,7 @@ async function loadItems(){
   }catch(e){ state.items = []; console.error('loadItems', e); }
   state.loading = false;
   await loadFavorites();
+  await loadBlockedUsers();
   render();
 }
 function rowToItem(row){
@@ -441,7 +443,7 @@ function bindAuth(){
       btn.disabled = false; btn.textContent = 'Log in';
       if(error){ errBox.textContent = error.message; errBox.style.display = 'block'; return; }
       const meta = data.user.user_metadata || {};
-      state.user = { name: meta.name || email.split('@')[0], email, neighborhood: meta.neighborhood || 'Queenstown' };
+      state.user = { name: meta.name || email.split('@')[0], email, neighborhood: meta.neighborhood || 'Queenstown', phone: meta.phone || '' };
       afterAuthSuccess();
     }
   });
@@ -455,7 +457,7 @@ function afterAuthSuccess(){
     state.screen = target;
     render();
   }
-  loadFavorites().then(render);
+  loadFavorites().then(()=>{ loadBlockedUsers().then(render); });
 }
 
 function screenContent(){
@@ -491,7 +493,9 @@ function itemCard(item){
 
 function filteredItems(){
   const q = state.searchQuery.trim().toLowerCase();
+  const blocked = state.blockedUsers || [];
   const list = state.items.filter(i =>
+    !blocked.includes(i.postedBy) &&
     (!state.filterCategory || i.category === state.filterCategory) &&
     (!state.filterSubcategory || i.subcategory === state.filterSubcategory) &&
     (!state.filterStatus || i.status === state.filterStatus) &&
@@ -703,6 +707,7 @@ async function startCheckout(kind, itemId, days, price){
     console.error(e);
   }
 }
+
 function payToEdit(itemId){
   startCheckout('edit', itemId, null, 2);
 }
@@ -762,16 +767,38 @@ async function handleCheckoutReturn(){
 function chatContent(){
   const item = state.items.find(i=>i.id===state.currentItemId);
   if(!item) return emptyState('Conversation not found','');
+  const otherPerson = item.postedBy === state.user.name ? null : item.postedBy;
   return `
     <button class="back-btn" onclick="openDetail('${item.id}')" aria-label="Back">←</button>
     <h2 style="font-size:18px;margin-bottom:4px;">${item.title}</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Conversation with ${item.postedBy === state.user.name ? '(posted by you)' : item.postedBy}</p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Conversation with ${otherPerson || '(posted by you)'}${otherPerson ? ` &nbsp;·&nbsp; <a onclick="blockUser('${otherPerson}')" style="color:#c0392b;font-weight:700;cursor:pointer;">Block</a>` : ''}</p>
     <div class="msg-thread" id="msgThread"><p style="color:var(--muted);font-size:14px;">Loading...</p></div>
     <div class="msg-input-row">
       <textarea id="chatInput" placeholder="Type your message..."></textarea>
       <button onclick="submitMessage('${item.id}')" aria-label="Send">Send</button>
     </div>
   `;
+}
+async function loadBlockedUsers(){
+  if(!state.user){ state.blockedUsers = []; return; }
+  try{
+    const { data, error } = await db.from('blocks').select('blocked_name').eq('blocker_email', state.user.email);
+    if(error) throw error;
+    state.blockedUsers = (data||[]).map(r => r.blocked_name);
+  }catch(e){ state.blockedUsers = []; console.error('loadBlockedUsers', e); }
+}
+async function blockUser(name){
+  if(!confirm(`Block ${name}? You won't see their listings anymore, and they won't be able to reach you.`)) return;
+  await db.from('blocks').insert([{ blocker_email: state.user.email, blocked_name: name }]);
+  state.blockedUsers = state.blockedUsers || [];
+  state.blockedUsers.push(name);
+  await loadItems();
+  goto('search');
+}
+async function unblockUser(name){
+  await db.from('blocks').delete().eq('blocker_email', state.user.email).eq('blocked_name', name);
+  state.blockedUsers = (state.blockedUsers||[]).filter(n => n !== name);
+  render();
 }
 
 function conversationsContent(){
@@ -794,11 +821,18 @@ function accountContent(){
   return `
     <div class="account-header">
       <div class="account-avatar">${(state.user.name||'?').charAt(0).toUpperCase()}</div>
-      <div><h2 style="font-size:19px;">${state.user.name}</h2><p style="font-size:13px;color:var(--muted);">${state.user.neighborhood}</p></div>
+      <div><h2 style="font-size:19px;">${state.user.name} ${state.user.phone ? '<span class="pill boosted" style="font-size:10px;padding:3px 8px;">📞 Phone added</span>' : ''}</h2><p style="font-size:13px;color:var(--muted);">${state.user.neighborhood}</p></div>
     </div>
     <div class="account-row"><span class="lbl">Email</span><span>${state.user.email}</span></div>
     <div class="account-row"><span class="lbl">Items posted</span><span>${myItems.length}</span></div>
     <div class="account-row"><span class="lbl">Favorites saved by you</span><span>${state.favorites.length}</span></div>
+
+    <div class="section-title">Contact phone (builds trust with neighbours)</div>
+    <form id="phoneForm" style="display:flex;gap:8px;align-items:flex-start;">
+      <input id="acc-phone" type="tel" placeholder="e.g. 021 234 5678" value="${state.user.phone||''}" style="margin-top:0;"/>
+      <button class="ghost" type="submit" style="width:auto;margin-top:0;padding:14px 16px;">Save</button>
+    </form>
+    <p style="font-size:12px;color:var(--muted);margin-top:6px;">This is a self-declared number, not SMS-verified — shown as a trust signal only.</p>
 
     <div class="section-title">My listings</div>
     ${myItems.length ? myItems.map(i => {
@@ -819,6 +853,13 @@ function accountContent(){
         </div>
       </div>
     `;}).join('') : emptyState('No listings yet', "Items you post will show up here with views and favorites stats.")}
+
+    ${state.blockedUsers && state.blockedUsers.length ? `
+    <div class="section-title">Blocked users</div>
+    ${state.blockedUsers.map(name => `
+      <div class="account-row"><span>${name}</span><a onclick="unblockUser('${name}')" style="color:var(--accent);font-weight:700;cursor:pointer;font-size:13px;">Unblock</a></div>
+    `).join('')}
+    ` : ''}
 
     <button class="ghost" onclick="logout()">Log out</button>
   `;
@@ -883,6 +924,15 @@ async function submitMessage(itemId){
 }
 
 function bindScreenEvents(){
+  const phoneForm = document.getElementById('phoneForm');
+  if(phoneForm){
+    phoneForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const phone = document.getElementById('acc-phone').value.trim();
+      const { error } = await db.auth.updateUser({ data: { name: state.user.name, neighborhood: state.user.neighborhood, phone } });
+      if(!error){ state.user.phone = phone; render(); }
+    });
+  }
   const cf = document.getElementById('createForm');
   if(cf){
     const editId = cf.dataset.editId;
@@ -948,8 +998,9 @@ async function restoreSession(){
   if(data.session){
     const u = data.session.user;
     const meta = u.user_metadata || {};
-    state.user = { name: meta.name || u.email.split('@')[0], email: u.email, neighborhood: meta.neighborhood || 'Queenstown' };
+    state.user = { name: meta.name || u.email.split('@')[0], email: u.email, neighborhood: meta.neighborhood || 'Queenstown', phone: meta.phone || '' };
     await loadFavorites();
+    await loadBlockedUsers();
     render();
   }
 }
