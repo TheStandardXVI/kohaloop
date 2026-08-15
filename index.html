@@ -240,7 +240,8 @@ function rowToItem(row){
     subcategory: row.subcategory, status: row.status, price: row.price, neighborhood: row.neighborhood,
     size: row.size, shoeSize: row.shoe_size, photo: row.photo,
     postedBy: row.posted_by, postedByEmail: row.posted_by_email, createdAt: row.created_at,
-    editCount: row.edit_count || 0, boostedUntil: row.boosted_until, views: row.views || 0
+    editCount: row.edit_count || 0, boostedUntil: row.boosted_until, views: row.views || 0,
+    availability: row.availability || 'available'
   };
 }
 async function saveItem(item){
@@ -248,7 +249,8 @@ async function saveItem(item){
     id: item.id, title: item.title, description: item.description, category: item.category,
     subcategory: item.subcategory, status: item.status, price: item.price, neighborhood: item.neighborhood,
     size: item.size, shoe_size: item.shoeSize, photo: item.photo,
-    posted_by: item.postedBy, posted_by_email: state.user.email, created_at: item.createdAt
+    posted_by: item.postedBy, posted_by_email: state.user.email, created_at: item.createdAt,
+    availability: 'available'
   }]);
   if(error) console.error('saveItem', error);
 }
@@ -260,6 +262,13 @@ async function updateItem(id, fields, newEditCount){
     photo: fields.photo, edit_count: newEditCount
   }).eq('id', id);
   if(error) console.error('updateItem', error);
+}
+async function setAvailability(id, availability){
+  const { error } = await db.from('items').update({ availability }).eq('id', id);
+  if(error){ console.error('setAvailability', error); return; }
+  const item = state.items.find(i=>i.id===id);
+  if(item) item.availability = availability;
+  render();
 }
 
 async function loadFavorites(){
@@ -651,7 +660,7 @@ function detailContent(){
     ${isMine ? `
       <button class="primary" onclick="goto('boost')">⭐ Boost this listing</button>
       <button class="ghost" onclick="openEdit('${item.id}')">Edit listing</button>
-      <button class="ghost" onclick="deleteListing('${item.id}')" style="color:#c0392b;">Delete listing</button>
+      <button class="ghost" onclick="deleteListing('${item.id}')" style="color:#c0392b;">Delete listing (sold or gone)</button>
     ` : `
       <button class="primary" onclick="openChat('${item.id}')">Contact</button>
       <button class="ghost" onclick="reportListing('${item.id}')" style="color:#c0392b;">Report this listing</button>
