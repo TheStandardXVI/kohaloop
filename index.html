@@ -13,6 +13,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Quicksand:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{
   --bg:#FAFAFA;
@@ -146,6 +148,12 @@ nav.bottom button.fab-mid.active{filter:brightness(1.08);color:#fff;}
 .streak-card .lbl{font-size:12px;color:var(--muted);font-weight:600;}
 .skeleton{height:68px;border-radius:20px;margin-bottom:14px;background:linear-gradient(90deg,#f0f0f0 25%,#f8f8f8 37%,#f0f0f0 63%);background-size:400px 100%;animation:shimmer 1.4s infinite linear;}
 .city-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;margin-bottom:18px;}
+.view-toggle{display:flex;gap:6px;margin-bottom:16px;}
+.view-toggle button{flex:1;padding:9px;border-radius:12px;border:1px solid var(--border);background:#fff;font-weight:700;font-size:13px;color:var(--muted);cursor:pointer;}
+.view-toggle button.active{background:var(--gradient);color:#fff;border-color:transparent;}
+#mapView{height:60vh;border-radius:16px;overflow:hidden;border:1px solid var(--border);}
+#itemMiniMap{height:160px;border-radius:14px;overflow:hidden;border:1px solid var(--border);margin-top:12px;}
+.locate-btn{width:auto;margin-top:8px;padding:10px 14px;font-size:13px;background:none;border:1px solid var(--border);border-radius:12px;color:var(--accent);font-weight:700;cursor:pointer;}
 .city-scroll::-webkit-scrollbar{display:none;}
 .city-chip{
   flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px 16px;min-width:110px;
@@ -183,6 +191,7 @@ let state = {
   loading: false,
   favCounts: {},
   blockedUsers: [],
+  viewMode: 'list',
 };
 
 const GATED_SCREENS = ['favorites','create','conversations','account','chat','edit','boost'];
@@ -241,7 +250,7 @@ function rowToItem(row){
     size: row.size, shoeSize: row.shoe_size, photo: row.photo,
     postedBy: row.posted_by, postedByEmail: row.posted_by_email, createdAt: row.created_at,
     editCount: row.edit_count || 0, boostedUntil: row.boosted_until, views: row.views || 0,
-    availability: row.availability || 'available'
+    availability: row.availability || 'available', lat: row.latitude, lng: row.longitude
   };
 }
 async function saveItem(item){
@@ -250,7 +259,7 @@ async function saveItem(item){
     subcategory: item.subcategory, status: item.status, price: item.price, neighborhood: item.neighborhood,
     size: item.size, shoe_size: item.shoeSize, photo: item.photo,
     posted_by: item.postedBy, posted_by_email: state.user.email, created_at: item.createdAt,
-    availability: 'available'
+    availability: 'available', latitude: item.lat || null, longitude: item.lng || null
   }]);
   if(error) console.error('saveItem', error);
 }
@@ -259,7 +268,8 @@ async function updateItem(id, fields, newEditCount){
     title: fields.title, description: fields.description, category: fields.category,
     subcategory: fields.subcategory, status: fields.status, price: fields.price,
     neighborhood: fields.neighborhood, size: fields.size, shoe_size: fields.shoeSize,
-    photo: fields.photo, edit_count: newEditCount
+    photo: fields.photo, edit_count: newEditCount,
+    latitude: fields.lat || null, longitude: fields.lng || null
   }).eq('id', id);
   if(error) console.error('updateItem', error);
 }
@@ -333,6 +343,8 @@ function render(){
     </nav>
   `;
   bindScreenEvents();
+  if(state.screen === 'search' && state.viewMode === 'map') renderMapView();
+  if(state.screen === 'detail' && state.currentItemId) renderItemMiniMap();
 }
 
 function screenHeader(){
@@ -547,9 +559,33 @@ function searchContent(){
       ${cities.map(([city,count]) => `<div class="city-chip"><span class="city-name">${city}</span><span class="city-count">${count}</span></div>`).join('')}
     </div>
     ` : ''}
-    <div class="section-title">Latest listings</div>
-    ${filtered.length ? filtered.map(itemCard).join('') : emptyState('No results', "Try adjusting your search or filters, or post your own item.")}
+    <div class="view-toggle">
+      <button class="${state.viewMode!=='map'?'active':''}" onclick="setViewMode('list')">☰ List</button>
+      <button class="${state.viewMode==='map'?'active':''}" onclick="setViewMode('map')">📍 Map</button>
+    </div>
+    ${state.viewMode==='map' ? `<div id="mapView"></div>` : `
+      <div class="section-title">Latest listings</div>
+      ${filtered.length ? filtered.map(itemCard).join('') : emptyState('No results', "Try adjusting your search or filters, or post your own item.")}
+    `}
   `;
+}
+function setViewMode(mode){ state.viewMode = mode; render(); }
+function renderMapView(){
+  const el = document.getElementById('mapView');
+  if(!el || typeof L === 'undefined') return;
+  const items = filteredItems().filter(i => i.lat && i.lng);
+  const center = items.length ? [items[0].lat, items[0].lng] : [-45.0312, 168.6626]; // Queenstown by default
+  const map = L.map('mapView').setView(center, items.length ? 11 : 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+  items.forEach(i => {
+    const marker = L.marker([i.lat, i.lng]).addTo(map);
+    marker.bindPopup(`<strong>${i.title}</strong><br>${i.neighborhood}<br><a href="#" onclick="openDetail('${i.id}');return false;">View listing</a>`);
+  });
+  if(!items.length){
+    L.popup().setLatLng(center).setContent('No listings with a saved location yet.').openOn(map);
+  }
 }
 
 function favoritesContent(){
@@ -597,6 +633,8 @@ function createContent(editItem){
       <input id="c-price" type="number" placeholder="0" value="${it.price||''}"/>
       <label>Neighbourhood</label>
       <input id="c-hood" value="${it.neighborhood || state.user?.neighborhood || ''}" required/>
+      <button type="button" class="locate-btn" id="locateBtn" onclick="captureLocation()">📍 ${it.lat ? 'Location saved — tap to update' : 'Use my current location'}</button>
+      <p id="locateStatus" style="font-size:12px;color:var(--muted);margin-top:4px;"></p>
       <button class="primary" type="submit">${isEdit ? 'Save changes' : 'Post my item'}</button>
     </form>
   `;
@@ -657,6 +695,7 @@ function detailContent(){
     <div class="detail-meta">${item.neighborhood} &nbsp;·&nbsp; ${item.category}${item.subcategory ? ' &nbsp;·&nbsp; '+item.subcategory : ''}${item.size ? ' &nbsp;·&nbsp; Size '+item.size : ''}${item.shoeSize ? ' &nbsp;·&nbsp; Shoe size '+item.shoeSize : ''}${item.price ? ' &nbsp;·&nbsp; $'+item.price+' NZD' : ''}</div>
     <p style="font-size:15px;line-height:1.55;color:var(--text);margin-top:12px;">${item.description || 'No description provided.'}</p>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;">Posted by ${item.postedBy}</p>
+    ${item.lat && item.lng ? `<div id="itemMiniMap"></div>` : ''}
     ${item.status === 'louer' ? `
       <div class="section-title">Booked dates</div>
       <div id="bookingsList"><p style="color:var(--muted);font-size:13px;">Loading...</p></div>
@@ -677,6 +716,17 @@ function detailContent(){
       <button class="ghost" onclick="reportListing('${item.id}')" style="color:#c0392b;">Report this listing</button>
     `}
   `;
+}
+function renderItemMiniMap(){
+  const el = document.getElementById('itemMiniMap');
+  if(!el || typeof L === 'undefined') return;
+  const item = state.items.find(i=>i.id===state.currentItemId);
+  if(!item || !item.lat || !item.lng) return;
+  const map = L.map('itemMiniMap', { zoomControl: false, dragging: true, scrollWheelZoom: false }).setView([item.lat, item.lng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+  L.marker([item.lat, item.lng]).addTo(map);
 }
 function formatDate(d){
   const dt = new Date(d+'T00:00:00');
@@ -1015,6 +1065,8 @@ function bindScreenEvents(){
     const editId = cf.dataset.editId;
     const existingItem = editId ? state.items.find(i=>i.id===editId) : null;
     let pendingPhoto = existingItem ? existingItem.photo : null;
+    let pendingLat = existingItem ? existingItem.lat : null;
+    let pendingLng = existingItem ? existingItem.lng : null;
     const photoInput = document.getElementById('c-photo');
     if(photoInput){
       photoInput.addEventListener('change', async (e)=>{
@@ -1025,6 +1077,21 @@ function bindScreenEvents(){
         document.getElementById('photoPreview').innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:160px;border-radius:12px;object-fit:cover;">`;
       });
     }
+    window.captureLocation = function(){
+      const statusEl = document.getElementById('locateStatus');
+      if(!navigator.geolocation){ statusEl.textContent = 'Location not supported on this device.'; return; }
+      statusEl.textContent = 'Getting your location...';
+      navigator.geolocation.getCurrentPosition(
+        (pos)=>{
+          pendingLat = pos.coords.latitude;
+          pendingLng = pos.coords.longitude;
+          statusEl.textContent = '✓ Location saved.';
+          document.getElementById('locateBtn').textContent = '📍 Location saved — tap to update';
+        },
+        (err)=>{ statusEl.textContent = 'Could not get your location — you can still publish without it.'; },
+        { enableHighAccuracy: false, timeout: 8000 }
+      );
+    };
     cf.addEventListener('submit', async (e)=>{
       e.preventDefault();
       const fields = {
@@ -1038,6 +1105,7 @@ function bindScreenEvents(){
         size: document.getElementById('c-size') ? document.getElementById('c-size').value || null : null,
         shoeSize: document.getElementById('c-shoe') ? document.getElementById('c-shoe').value || null : null,
         photo: pendingPhoto,
+        lat: pendingLat, lng: pendingLng,
       };
       if(existingItem){
         await updateItem(existingItem.id, fields, (existingItem.editCount||0)+1);
