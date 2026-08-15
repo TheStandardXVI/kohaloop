@@ -239,7 +239,7 @@ function rowToItem(row){
     id: row.id, title: row.title, description: row.description, category: row.category,
     subcategory: row.subcategory, status: row.status, price: row.price, neighborhood: row.neighborhood,
     size: row.size, shoeSize: row.shoe_size, photo: row.photo,
-    postedBy: row.posted_by, createdAt: row.created_at,
+    postedBy: row.posted_by, postedByEmail: row.posted_by_email, createdAt: row.created_at,
     editCount: row.edit_count || 0, boostedUntil: row.boosted_until, views: row.views || 0
   };
 }
@@ -248,7 +248,7 @@ async function saveItem(item){
     id: item.id, title: item.title, description: item.description, category: item.category,
     subcategory: item.subcategory, status: item.status, price: item.price, neighborhood: item.neighborhood,
     size: item.size, shoe_size: item.shoeSize, photo: item.photo,
-    posted_by: item.postedBy, created_at: item.createdAt
+    posted_by: item.postedBy, posted_by_email: state.user.email, created_at: item.createdAt
   }]);
   if(error) console.error('saveItem', error);
 }
@@ -921,6 +921,14 @@ async function submitMessage(itemId){
   await sendMessage(itemId, state.user.name, text);
   input.value = '';
   openChat(itemId);
+  const item = state.items.find(i=>i.id===itemId);
+  if(item && item.postedBy !== state.user.name && item.postedByEmail){
+    fetch('/notify-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toEmail: item.postedByEmail, listingTitle: item.title, fromName: state.user.name, messageText: text })
+    }).catch(e => console.error('notify-message failed', e));
+  }
 }
 
 function bindScreenEvents(){
