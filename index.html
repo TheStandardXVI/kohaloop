@@ -657,6 +657,17 @@ function detailContent(){
     <div class="detail-meta">${item.neighborhood} &nbsp;·&nbsp; ${item.category}${item.subcategory ? ' &nbsp;·&nbsp; '+item.subcategory : ''}${item.size ? ' &nbsp;·&nbsp; Size '+item.size : ''}${item.shoeSize ? ' &nbsp;·&nbsp; Shoe size '+item.shoeSize : ''}${item.price ? ' &nbsp;·&nbsp; $'+item.price+' NZD' : ''}</div>
     <p style="font-size:15px;line-height:1.55;color:var(--text);margin-top:12px;">${item.description || 'No description provided.'}</p>
     <p style="font-size:13px;color:var(--muted);margin-top:18px;">Posted by ${item.postedBy}</p>
+    ${item.status === 'louer' ? `
+      <div class="section-title">Booked dates</div>
+      <div id="bookingsList"><p style="color:var(--muted);font-size:13px;">Loading...</p></div>
+      ${isMine ? `
+      <form id="bookingForm" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <input type="date" id="bk-start" required style="margin-top:0;flex:1;min-width:130px;"/>
+        <input type="date" id="bk-end" required style="margin-top:0;flex:1;min-width:130px;"/>
+        <button class="ghost" type="submit" style="width:auto;margin-top:0;padding:10px 14px;">Block these dates</button>
+      </form>
+      ` : ''}
+    ` : ''}
     ${isMine ? `
       <button class="primary" onclick="goto('boost')">⭐ Boost this listing</button>
       <button class="ghost" onclick="openEdit('${item.id}')">Edit listing</button>
@@ -666,6 +677,35 @@ function detailContent(){
       <button class="ghost" onclick="reportListing('${item.id}')" style="color:#c0392b;">Report this listing</button>
     `}
   `;
+}
+function formatDate(d){
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-NZ', { day:'numeric', month:'short' });
+}
+async function loadAndRenderBookings(itemId){
+  const list = document.getElementById('bookingsList');
+  if(!list) return;
+  try{
+    const { data, error } = await db.from('bookings').select('*').eq('item_id', itemId).order('start_date');
+    if(error) throw error;
+    const today = new Date().toISOString().slice(0,10);
+    const upcoming = (data||[]).filter(b => b.end_date >= today);
+    const item = state.items.find(i=>i.id===itemId);
+    const isMine = state.user && item && item.postedBy === state.user.name;
+    list.innerHTML = upcoming.length ? upcoming.map(b => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px;">
+        <span>${formatDate(b.start_date)} → ${formatDate(b.end_date)}</span>
+        ${isMine ? `<a onclick="removeBooking(${b.id}, '${itemId}')" style="color:#c0392b;font-size:12px;font-weight:700;cursor:pointer;">Remove</a>` : ''}
+      </div>
+    `).join('') : `<p style="color:var(--muted);font-size:13px;">No dates blocked yet — fully open.</p>`;
+  }catch(e){
+    list.innerHTML = `<p style="color:var(--muted);font-size:13px;">Could not load booked dates.</p>`;
+    console.error('loadAndRenderBookings', e);
+  }
+}
+async function removeBooking(id, itemId){
+  await db.from('bookings').delete().eq('id', id);
+  loadAndRenderBookings(itemId);
 }
 async function reportListing(itemId){
   if(!state.user){ state.currentItemId = itemId; requireAuth('detail'); return; }
@@ -910,6 +950,7 @@ function openDetail(id){
   if(item){
     item.views = (item.views||0) + 1;
     db.from('items').update({ views: item.views }).eq('id', id).then(()=>{});
+    if(item.status === 'louer') loadAndRenderBookings(id);
   }
 }
 function openEdit(id){ state.currentItemId = id; goto('edit'); }
@@ -941,6 +982,25 @@ async function submitMessage(itemId){
 }
 
 function bindScreenEvents(){
+  const bookingForm = document.getElementById('bookingForm');
+  if(bookingForm){
+    bookingForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const start = document.getElementById('bk-start').value;
+      const end = document.getElementById('bk-end').value;
+      if(!start || !end || end < start){ alert('Please pick a valid date range (end date after start date).'); return; }
+      const { data: existing, error: fetchErr } = await db.from('bookings').select('start_date,end_date').eq('item_id', state.currentItemId);
+      if(fetchErr){ alert('Could not check existing dates. Please try again.'); return; }
+      const overlaps = (existing||[]).some(b => start <= b.end_date && end >= b.start_date);
+      if(overlaps){
+        alert('These dates overlap with an existing booking. Please pick a different range, or remove the conflicting one first.');
+        return;
+      }
+      await db.from('bookings').insert([{ item_id: state.currentItemId, start_date: start, end_date: end }]);
+      loadAndRenderBookings(state.currentItemId);
+      e.target.reset();
+    });
+  }
   const phoneForm = document.getElementById('phoneForm');
   if(phoneForm){
     phoneForm.addEventListener('submit', async (e)=>{
