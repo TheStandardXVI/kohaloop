@@ -336,6 +336,10 @@ async function sendMessage(itemId, from, text){
 }
 
 function statusInfo(v){ return STATUSES.find(s=>s.v===v) || STATUSES[0]; }
+function esc(str){
+  if(str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 const ICON_SEARCH = `<svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="#0EA5E9" stroke-width="2.4"/><line x1="15.3" y1="15.3" x2="21" y2="21" stroke="#0EA5E9" stroke-width="2.6" stroke-linecap="round"/></svg>`;
 
@@ -375,7 +379,7 @@ function screenHeader(){
       <div class="top-row"><div class="brand"><img src="logo.png" alt="KohaLoop"><span class="header-wordmark">Koha Loop</span></div></div>
       <div class="searchbar">
         <span>⚲</span>
-        <input id="searchInput" placeholder="Search for an item..." value="${state.searchQuery}"/>
+        <input id="searchInput" placeholder="Search for an item..." value="${esc(state.searchQuery)}"/>
       </div>
       <div class="filters">
         <select id="fCat" class="chip-select">
@@ -477,6 +481,9 @@ function bindAuth(){
         return;
       }
       state.user = { name, email, neighborhood: hood };
+      if(state.referralCode && state.referralCode !== email){
+        db.from('referrals').insert([{ referrer_email: state.referralCode, referred_email: email }]).then(()=>{});
+      }
       afterAuthSuccess();
     } else {
       const { data, error } = await db.auth.signInWithPassword({ email, password });
@@ -524,7 +531,7 @@ function itemCard(item){
       <div class="item-info">
         <span class="pill ${s.cls}">${s.label}</span>
         ${isBoosted ? '<span class="pill boosted">⭐</span>' : ''}
-        <h3>${item.title}</h3>
+        <h3>${esc(item.title)}</h3>
         <p>${item.neighborhood} · ${item.category}${item.size ? ' · Size '+item.size : ''}${item.shoeSize ? ' · Shoe size '+item.shoeSize : ''}${item.price ? ' · $'+item.price+' NZD' : ''}</p>
       </div>
     </div>
@@ -567,10 +574,19 @@ function searchContent(){
   }
   const filtered = filteredItems();
   const cities = cityBreakdown();
+  const totalValue = state.items.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
   return `
-    <div class="streak-card">
-      <div class="num">${state.items.length}</div>
-      <div class="lbl">item${state.items.length===1?'':'s'} shared by the community 🌱</div>
+    <div style="display:flex;gap:10px;">
+      <div class="streak-card" style="flex:1;">
+        <div class="num">${state.items.length}</div>
+        <div class="lbl">item${state.items.length===1?'':'s'} shared 🌱</div>
+      </div>
+      ${totalValue > 0 ? `
+      <div class="streak-card" style="flex:1;">
+        <div class="num">$${totalValue.toLocaleString()}</div>
+        <div class="lbl">NZD in value shared</div>
+      </div>
+      ` : ''}
     </div>
     ${cities.length ? `
     <div class="section-title">Listings by city</div>
@@ -600,7 +616,7 @@ function renderMapView(){
   }).addTo(map);
   items.forEach(i => {
     const marker = L.marker([i.lat, i.lng]).addTo(map);
-    marker.bindPopup(`<strong>${i.title}</strong><br>${i.neighborhood}<br><a href="#" onclick="openDetail('${i.id}');return false;">View listing</a>`);
+    marker.bindPopup(`<strong>${esc(i.title)}</strong><br>${esc(i.neighborhood)}<br><a href="#" onclick="openDetail('${i.id}');return false;">View listing</a>`);
   });
   if(!items.length){
     L.popup().setLatLng(center).setContent('No listings with a saved location yet.').openOn(map);
@@ -722,10 +738,10 @@ function detailContent(){
       <span class="pill ${s.cls}">${s.label}</span>
       ${isBoosted ? '<span class="pill boosted">⭐ Boosted</span>' : ''}
     </div>
-    <h2 style="margin-top:10px;font-size:22px;">${item.title}</h2>
+    <h2 style="margin-top:10px;font-size:22px;">${esc(item.title)}</h2>
     <div class="detail-meta">${item.neighborhood} &nbsp;·&nbsp; ${item.category}${item.subcategory ? ' &nbsp;·&nbsp; '+item.subcategory : ''}${item.size ? ' &nbsp;·&nbsp; Size '+item.size : ''}${item.shoeSize ? ' &nbsp;·&nbsp; Shoe size '+item.shoeSize : ''}${item.price ? ' &nbsp;·&nbsp; $'+item.price+' NZD' : ''}</div>
-    <p style="font-size:15px;line-height:1.55;color:var(--text);margin-top:12px;">${item.description || 'No description provided.'}</p>
-    <p style="font-size:13px;color:var(--muted);margin-top:18px;">Posted by ${item.postedBy}</p>
+    <p style="font-size:15px;line-height:1.55;color:var(--text);margin-top:12px;">${esc(item.description) || "No description provided."}</p>
+    <p style="font-size:13px;color:var(--muted);margin-top:18px;">Posted by ${esc(item.postedBy)}</p>
     <button class="ghost" onclick="shareListing('${item.id}')">📣 Share this listing</button>
     ${item.lat && item.lng ? `<div id="itemMiniMap"></div>` : ''}
     ${item.status === 'louer' ? `
@@ -921,8 +937,8 @@ function chatContent(){
   const otherPerson = item.postedBy === state.user.name ? null : item.postedBy;
   return `
     <button class="back-btn" onclick="openDetail('${item.id}')" aria-label="Back">←</button>
-    <h2 style="font-size:18px;margin-bottom:4px;">${item.title}</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Conversation with ${otherPerson || '(posted by you)'}${otherPerson ? ` &nbsp;·&nbsp; <a onclick="blockUser('${otherPerson}')" style="color:#c0392b;font-weight:700;cursor:pointer;">Block</a>` : ''}</p>
+    <h2 style="font-size:18px;margin-bottom:4px;">${esc(item.title)}</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Conversation with ${esc(otherPerson) || '(posted by you)'}${otherPerson ? ` &nbsp;·&nbsp; <a onclick="blockUser('${otherPerson}')" style="color:#c0392b;font-weight:700;cursor:pointer;">Block</a>` : ''}</p>
     <div class="msg-thread" id="msgThread"><p style="color:var(--muted);font-size:14px;">Loading...</p></div>
     <div class="msg-input-row">
       <textarea id="chatInput" placeholder="Type your message..."></textarea>
@@ -960,7 +976,7 @@ function conversationsContent(){
     ${myItems.map(i => `
       <div class="conv-card" onclick="openChat('${i.id}')">
         <div class="item-thumb" style="width:52px;height:52px;"><img src="logo.png" alt="" style="width:26px;height:26px;"></div>
-        <div><h3 style="font-size:16px;">${i.title}</h3><p style="font-size:13px;color:var(--muted);">View received messages</p></div>
+        <div><h3 style="font-size:16px;">${esc(i.title)}</h3><p style="font-size:13px;color:var(--muted);">View received messages</p></div>
       </div>
     `).join('')}
   `;
@@ -972,7 +988,7 @@ function accountContent(){
   return `
     <div class="account-header">
       <div class="account-avatar">${(state.user.name||'?').charAt(0).toUpperCase()}</div>
-      <div><h2 style="font-size:19px;">${state.user.name} ${state.user.phone ? '<span class="pill boosted" style="font-size:10px;padding:3px 8px;">📞 Phone added</span>' : ''}</h2><p style="font-size:13px;color:var(--muted);">${state.user.neighborhood}</p></div>
+      <div><h2 style="font-size:19px;">${esc(state.user.name)} ${state.user.phone ? '<span class="pill boosted" style="font-size:10px;padding:3px 8px;">📞 Phone added</span>' : ''}</h2><p style="font-size:13px;color:var(--muted);">${esc(state.user.neighborhood)}</p></div>
     </div>
     <div class="account-row"><span class="lbl">Email</span><span>${state.user.email}</span></div>
     <div class="account-row"><span class="lbl">Items posted</span><span>${myItems.length}</span></div>
@@ -995,7 +1011,7 @@ function accountContent(){
         <div class="item-info">
           <span class="pill ${statusInfo(i.status).cls}">${statusInfo(i.status).label}</span>
           ${isBoosted ? '<span class="pill boosted">⭐ Boosted</span>' : ''}
-          <h3 onclick="event.stopPropagation();openDetail('${i.id}')" style="cursor:pointer;">${i.title}</h3>
+          <h3 onclick="event.stopPropagation();openDetail('${i.id}')" style="cursor:pointer;">${esc(i.title)}</h3>
           <p>👁 ${i.views||0} views &nbsp;·&nbsp; 🍀 ${likeCount} favorited</p>
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
             <button class="ghost" style="width:auto;margin-top:0;padding:8px 12px;font-size:13px;" onclick="event.stopPropagation();openEdit('${i.id}')">Edit</button>
@@ -1012,21 +1028,52 @@ function accountContent(){
     `).join('')}
     ` : ''}
 
+    <div class="section-title">Invite friends</div>
+    <div class="streak-card">
+      <div class="num" id="referralCount">…</div>
+      <div class="lbl">friend${'s'} joined KohaLoop through you 🤝</div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">Share your link — every friend who joins helps grow the community.</p>
+    <button class="primary" onclick="shareReferralLink()">🤝 Invite a friend</button>
+
     <button class="ghost" onclick="logout()">Log out</button>
   `;
 }
 async function loadAccountStats(){
   const myItems = state.items.filter(i => i.postedBy === state.user.name);
   const ids = myItems.map(i => i.id);
-  if(!ids.length){ state.favCounts = {}; render(); return; }
-  try{
-    const { data, error } = await db.from('favorites').select('item_id').in('item_id', ids);
-    if(error) throw error;
-    const counts = {};
-    (data||[]).forEach(r => counts[r.item_id] = (counts[r.item_id]||0)+1);
-    state.favCounts = counts;
-  }catch(e){ state.favCounts = {}; console.error('loadAccountStats', e); }
+  if(ids.length){
+    try{
+      const { data, error } = await db.from('favorites').select('item_id').in('item_id', ids);
+      if(error) throw error;
+      const counts = {};
+      (data||[]).forEach(r => counts[r.item_id] = (counts[r.item_id]||0)+1);
+      state.favCounts = counts;
+    }catch(e){ state.favCounts = {}; console.error('loadAccountStats', e); }
+  } else {
+    state.favCounts = {};
+  }
   render();
+  loadReferralCount();
+}
+async function loadReferralCount(){
+  const el = document.getElementById('referralCount');
+  if(!el || !state.user) return;
+  try{
+    const { count, error } = await db.from('referrals').select('*', { count: 'exact', head: true }).eq('referrer_email', state.user.email);
+    if(error) throw error;
+    el.textContent = count || 0;
+  }catch(e){ el.textContent = '0'; console.error('loadReferralCount', e); }
+}
+async function shareReferralLink(){
+  const url = window.location.origin + window.location.pathname + '?ref=' + encodeURIComponent(state.user.email);
+  const shareData = { title: 'Join me on KohaLoop', text: 'Sell, rent and lend stuff with neighbours — join me on KohaLoop!', url };
+  if(navigator.share){
+    try{ await navigator.share(shareData); }catch(e){}
+  } else {
+    try{ await navigator.clipboard.writeText(url); alert('Invite link copied! Send it to a friend.'); }
+    catch(e){ prompt('Copy this link to invite a friend:', url); }
+  }
 }
 async function logout(){ await db.auth.signOut(); state.user=null; state.favorites=[]; state.screen='search'; render(); }
 
@@ -1063,7 +1110,7 @@ async function openChat(id){
   const thread = document.getElementById('msgThread');
   if(!thread) return;
   thread.innerHTML = msgs.length ? msgs.map(m => `
-    <div class="msg-bubble ${m.from === state.user.name ? 'msg-mine' : 'msg-theirs'}">${m.text}</div>
+    <div class="msg-bubble ${m.from === state.user.name ? 'msg-mine' : 'msg-theirs'}">${esc(m.text)}</div>
   `).join('') : `<p style="color:var(--muted);font-size:14px;">Say hello to start the conversation 👋</p>`;
 }
 async function submitMessage(itemId){
@@ -1255,6 +1302,11 @@ db.auth.onAuthStateChange((event, session) => {
 });
 
 render();
+{
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get('ref');
+  if(ref) state.referralCode = decodeURIComponent(ref);
+}
 loadItems().then(()=>{
   const params = new URLSearchParams(window.location.search);
   const sharedItemId = params.get('item');
