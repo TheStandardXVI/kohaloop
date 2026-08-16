@@ -1,11 +1,33 @@
+// Prix decides server-side, jamais fait confiance a ce que le navigateur envoie.
+const PRICES = {
+  boost: { 1: 3, 7: 8, 30: 20 },
+  edit: { default: 2 }
+};
+
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
-    const { itemId, kind, days, price, siteUrl } = await request.json();
+    const { itemId, kind, days, siteUrl } = await request.json();
 
-    const label = kind === 'boost'
-      ? `KohaLoop boost — ${days} day(s)`
-      : 'KohaLoop — extra listing edit';
+    let price, label;
+    if (kind === 'boost') {
+      price = PRICES.boost[days];
+      if (!price) {
+        return new Response(JSON.stringify({ error: 'Invalid boost duration' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      label = `KohaLoop boost — ${days} day(s)`;
+    } else if (kind === 'edit') {
+      price = PRICES.edit.default;
+      label = 'KohaLoop — extra listing edit';
+    } else {
+      return new Response(JSON.stringify({ error: 'Invalid checkout kind' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     const params = new URLSearchParams();
     params.append('mode', 'payment');
