@@ -53,7 +53,7 @@ h1,h2,h3,.brand,button{font-family:'Poppins',sans-serif;}
 @media (min-width: 900px){
   #app{max-width:1080px;min-height:auto;border-radius:28px;box-shadow:0 24px 70px rgba(17,24,39,0.14);overflow:hidden;}
   main{padding-left:48px;padding-right:48px;padding-bottom:48px;}
-  nav.bottom{position:relative;border-radius:0 0 28px 28px;}
+  nav.bottom{max-width:1080px;border-radius:20px 20px 0 0;}
   .items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
   .items-grid .item-card{margin-bottom:0;}
   .auth-screen{max-width:420px;margin:0 auto;}
@@ -67,7 +67,7 @@ header.top::after{content:'';display:block;height:3px;border-radius:3px;backgrou
 .top-row{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
 .brand{display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:700;color:var(--text);}
 .brand .header-wordmark{
-  font-family:'Fredoka',sans-serif;font-weight:700;font-size:26px;letter-spacing:.3px;
+  font-family:'Fredoka',sans-serif;font-weight:700;font-size:29px;letter-spacing:.3px;
   background:var(--gradient);-webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .nav-icon-svg{width:22px;height:22px;}
@@ -114,8 +114,9 @@ button.primary:hover{filter:brightness(1.05);}
 button.primary:active{transform:scale(0.97);}
 button.ghost{background:none;border:1px solid var(--border);color:var(--text);padding:14px;border-radius:16px;font-weight:700;cursor:pointer;width:100%;margin-top:12px;}
 nav.bottom{
-  position:absolute;bottom:0;left:0;right:0;height:80px;border-top:1px solid var(--border);display:flex;align-items:center;
-  background:rgba(255,255,255,0.92);backdrop-filter:blur(10px);padding:6px 8px;gap:2px;
+  position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:440px;
+  height:80px;border-top:1px solid var(--border);display:flex;align-items:center;
+  background:rgba(255,255,255,0.92);backdrop-filter:blur(10px);padding:6px 8px;gap:2px;z-index:20;
 }
 nav.bottom button{
   flex:1;background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;
