@@ -912,7 +912,8 @@ async function deleteListing(itemId){
   if(!confirm('Delete this listing for good? This cannot be undone.')) return;
   await db.from('items').delete().eq('id', itemId);
   await loadItems();
-  goto('search');
+  if(state.screen === 'account'){ render(); loadAccountStats(); }
+  else { goto('search'); }
 }
 
 function boostContent(){
@@ -1038,6 +1039,7 @@ function accountContent(){
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
             <button class="ghost" style="width:auto;margin-top:0;padding:8px 12px;font-size:13px;" onclick="event.stopPropagation();openEdit('${i.id}')">Edit</button>
             <button class="ghost" style="width:auto;margin-top:0;padding:8px 12px;font-size:13px;" onclick="event.stopPropagation();state.currentItemId='${i.id}';goto('boost')">${isBoosted ? 'Extend boost' : 'Boost'}</button>
+            <button class="ghost" style="width:auto;margin-top:0;padding:8px 12px;font-size:13px;color:#c0392b;" onclick="event.stopPropagation();deleteListing('${i.id}')">Delete</button>
           </div>
         </div>
       </div>
