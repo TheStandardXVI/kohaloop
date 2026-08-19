@@ -735,7 +735,7 @@ function processAndUploadPhoto(file, maxWidth){
         canvas.toBlob(async (blob) => {
           try{
             const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-            const { error: upErr } = await db.storage.from('listing-photos').upload(filename, blob, { contentType: 'image/jpeg', upsert: true });
+            const { error: upErr } = await db.storage.from('listing-photos').upload(filename, blob, { contentType: 'image/jpeg' });
             if(upErr) throw upErr;
             const { data } = db.storage.from('listing-photos').getPublicUrl(filename);
             resolve({ previewDataUrl, url: data.publicUrl });
