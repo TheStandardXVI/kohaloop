@@ -344,11 +344,11 @@ async function loadMessages(itemId){
   try{
     const { data, error } = await db.from('messages').select('*').eq('item_id', itemId).order('created_at', { ascending: true });
     if(error) throw error;
-    return (data || []).map(r => ({ id: r.id, itemId: r.item_id, from: r.from_name, text: r.text, createdAt: r.created_at }));
+    return (data || []).map(r => ({ id: r.id, itemId: r.item_id, from: r.from_name, fromEmail: r.from_email, text: r.text, createdAt: r.created_at }));
   }catch(e){ console.error('loadMessages', e); return []; }
 }
 async function sendMessage(itemId, from, text){
-  const msg = { id:'m_'+Date.now(), item_id: itemId, from_name: from, text, created_at: Date.now() };
+  const msg = { id:'m_'+Date.now(), item_id: itemId, from_name: from, from_email: state.user.email, text, created_at: Date.now() };
   const { error } = await db.from('messages').insert([msg]);
   if(error) console.error('sendMessage', error);
   return msg;
@@ -1154,7 +1154,7 @@ async function openChat(id){
   const thread = document.getElementById('msgThread');
   if(!thread) return;
   thread.innerHTML = msgs.length ? msgs.map(m => `
-    <div class="msg-bubble ${m.from === state.user.name ? 'msg-mine' : 'msg-theirs'}">${esc(m.text)}</div>
+    <div class="msg-bubble ${m.fromEmail === state.user.email ? 'msg-mine' : 'msg-theirs'}">${esc(m.text)}</div>
   `).join('') : `<p style="color:var(--muted);font-size:14px;">Say hello to start the conversation 👋</p>`;
 }
 async function submitMessage(itemId){
@@ -1173,7 +1173,7 @@ async function submitMessage(itemId){
     fetch('/notify-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toEmail: item.postedByEmail, listingTitle: item.title, fromName: state.user.name, messageText: text })
+      body: JSON.stringify({ itemId, listingTitle: item.title, fromName: state.user.name, messageText: text })
     }).catch(e => console.error('notify-message failed', e));
   }
 }
