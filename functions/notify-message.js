@@ -1,10 +1,29 @@
+const SUPABASE_URL = 'https://hyvlfpebkdqeutrdredk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_wGxofUWNRjzma7YOTpCC_g_ZHnotE7k';
+
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
-    const { toEmail, listingTitle, fromName, messageText } = await request.json();
+    const { itemId, listingTitle, fromName, messageText } = await request.json();
+
+    if (!itemId) {
+      return new Response(JSON.stringify({ error: 'Missing itemId' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // On va chercher nous-memes le vrai proprietaire de l'annonce dans Supabase,
+    // plutot que de faire confiance a une adresse envoyee par le navigateur.
+    const lookupRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/items?id=eq.${encodeURIComponent(itemId)}&select=posted_by_email`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    const rows = await lookupRes.json();
+    const toEmail = rows?.[0]?.posted_by_email;
 
     if (!toEmail) {
-      return new Response(JSON.stringify({ skipped: true, reason: 'no recipient email on file' }), {
+      return new Response(JSON.stringify({ skipped: true, reason: 'listing or owner email not found' }), {
         headers: { 'Content-Type': 'application/json' }
       });
     }
