@@ -642,6 +642,13 @@ function searchContent(){
       <div class="section-title">Latest listings</div>
       <div class="items-grid">${filtered.length ? filtered.map(itemCard).join('') : emptyState('No results', "Try adjusting your search or filters, or post your own item.")}</div>
     `}
+    <div style="text-align:center;padding:24px 0 8px;font-size:12px;color:var(--muted);">
+      <a href="/how-it-works.html" style="color:var(--accent);text-decoration:none;font-weight:600;">How it works</a> ·
+      <a href="/ski-gear-rental-queenstown.html" style="color:var(--accent);text-decoration:none;font-weight:600;">Ski gear</a> ·
+      <a href="/camping-gear-rental-wanaka.html" style="color:var(--accent);text-decoration:none;font-weight:600;">Camping gear</a> ·
+      <a href="/tools-rental-queenstown.html" style="color:var(--accent);text-decoration:none;font-weight:600;">Tools</a> ·
+      <a href="/privacy.html" style="color:var(--accent);text-decoration:none;font-weight:600;">Privacy</a>
+    </div>
   `;
 }
 function setViewMode(mode){ state.viewMode = mode; render(); }
