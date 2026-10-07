@@ -25,7 +25,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Cherry+Bomb+One&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -66,8 +66,31 @@ h1,h2,h3,.brand,button{font-family:'Poppins',sans-serif;}
 #app{width:100%;max-width:440px;min-height:100vh;background:var(--card);display:flex;flex-direction:column;position:relative;box-shadow:0 0 40px rgba(17,24,39,0.06);}
 @media (min-width: 900px){
   #app{max-width:1080px;min-height:auto;border-radius:28px;box-shadow:0 24px 70px rgba(17,24,39,0.14);overflow:hidden;}
-  main{padding-left:48px;padding-right:48px;padding-bottom:48px;}
-  nav.bottom{max-width:1080px;border-radius:20px 20px 0 0;}
+  header.top{order:0;}
+  main{order:2;padding-left:48px;padding-right:48px;padding-bottom:48px;padding-top:28px;}
+  nav.bottom{
+    order:1;position:static;transform:none;width:100%;max-width:none;height:auto;
+    background:#fff;backdrop-filter:none;padding:0 40px;gap:28px;
+    border-top:none;border-bottom:1px solid var(--border);justify-content:flex-start;
+    box-shadow:none;
+  }
+  nav.bottom button{
+    flex:none;flex-direction:row;gap:8px;height:auto;padding:16px 4px;border-radius:0;
+    font-size:14px;position:relative;
+  }
+  nav.bottom button .ic{font-size:18px;}
+  nav.bottom button .nav-icon-svg{width:18px;height:18px;}
+  nav.bottom button .nav-label{display:inline;}
+  nav.bottom button.active{background:none;color:var(--accent);}
+  nav.bottom button.active::after{
+    content:'';position:absolute;left:4px;right:4px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--gradient);
+  }
+  nav.bottom button.fab-mid{
+    margin-left:auto;margin-right:0;background:var(--gradient);color:#fff;border-radius:999px;padding:10px 20px;
+    box-shadow:0 4px 14px rgba(14,165,233,0.3);
+  }
+  nav.bottom button.fab-mid .ic{font-size:16px;}
+  nav.bottom button.fab-mid.active::after{display:none;}
   .items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
   .items-grid .item-card{margin-bottom:0;}
   .auth-screen{max-width:420px;margin:0 auto;}
@@ -81,7 +104,7 @@ header.top::after{content:'';display:block;height:3px;border-radius:3px;backgrou
 .top-row{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
 .brand{display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:700;color:var(--text);}
 .brand .header-wordmark{
-  font-family:'Baloo 2',sans-serif;font-weight:700;font-size:28px;letter-spacing:.3px;
+  font-family:'Cherry Bomb One',cursive;font-weight:400;font-size:26px;letter-spacing:.3px;
   background:var(--gradient);-webkit-background-clip:text;background-clip:text;color:transparent;
 }
 .nav-icon-svg{width:22px;height:22px;}
@@ -144,6 +167,7 @@ nav.bottom button.fab-mid{
   background:var(--gradient);color:#fff;border-radius:18px;margin:0 2px;box-shadow:0 4px 14px rgba(14,165,233,0.35);
 }
 nav.bottom button.fab-mid.active{filter:brightness(1.08);color:#fff;}
+.nav-label{display:none;}
 .empty{text-align:center;padding:50px 20px;color:var(--muted);}
 .empty p{font-size:15px;margin-top:8px;}
 .detail-hero{min-height:220px;border-radius:20px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:16px;position:relative;overflow:hidden;}
@@ -160,7 +184,7 @@ nav.bottom button.fab-mid.active{filter:brightness(1.08);color:#fff;}
   filter:blur(2px);
 }
 .wordmark{
-  font-family:'Baloo 2',sans-serif;font-size:42px;font-weight:700;letter-spacing:.3px;text-align:center;
+  font-family:'Cherry Bomb One',cursive;font-size:38px;font-weight:400;letter-spacing:.3px;text-align:center;
   position:relative;z-index:1;
   background:var(--gradient);-webkit-background-clip:text;background-clip:text;color:transparent;
 }
@@ -391,11 +415,11 @@ function render(){
     ${screenHeader()}
     <main id="mainContent" style="animation:fadeSlideIn .3s ease both;">${screenContent()}</main>
     <nav class="bottom">
-      <button class="${state.screen==='search'?'active':''}" onclick="goto('search')" aria-label="Search">${ICON_SEARCH}</button>
-      <button class="${state.screen==='favorites'?'active':''}" onclick="goto('favorites')" aria-label="Favorites">${ICON_CLOVER}</button>
-      <button class="fab-mid ${state.screen==='create'?'active':''}" onclick="goto('create')" aria-label="Post an item"><span class="ic">+</span></button>
-      <button class="${state.screen==='conversations'||state.screen==='chat'?'active':''}" onclick="goto('conversations')" aria-label="Messages">${ICON_MESSAGE}</button>
-      <button class="${state.screen==='account'?'active':''}" onclick="goto('account')" aria-label="Account"><img src="logo.png" alt="" class="nav-icon-svg"></button>
+      <button class="${state.screen==='search'?'active':''}" onclick="goto('search')" aria-label="Search">${ICON_SEARCH}<span class="nav-label">Browse</span></button>
+      <button class="${state.screen==='favorites'?'active':''}" onclick="goto('favorites')" aria-label="Favorites">${ICON_CLOVER}<span class="nav-label">Favourites</span></button>
+      <button class="fab-mid ${state.screen==='create'?'active':''}" onclick="goto('create')" aria-label="Post an item"><span class="ic">+</span><span class="nav-label">Post an ad</span></button>
+      <button class="${state.screen==='conversations'||state.screen==='chat'?'active':''}" onclick="goto('conversations')" aria-label="Messages">${ICON_MESSAGE}<span class="nav-label">Messages</span></button>
+      <button class="${state.screen==='account'?'active':''}" onclick="goto('account')" aria-label="Account"><img src="logo.png" alt="" class="nav-icon-svg"><span class="nav-label">Account</span></button>
     </nav>
   `;
   bindScreenEvents();
